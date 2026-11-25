@@ -76,6 +76,18 @@ jobs:
           git add -A
           git commit -m "chore: update the framework to coldigniter $version"
           git push -u origin "$branch"
-          gh pr create --base "$BASE_BRANCH" --head "$branch" \
+          # An organization can forbid workflows to open pull requests. Then
+          # the branch is still there: the summary of the run gives the link
+          # that opens the pull request by hand.
+          if gh pr create --base "$BASE_BRANCH" --head "$branch" \
             --title "chore: update the framework to coldigniter $version" \
-            --body-file "$RUNNER_TEMP/body.md"
+            --body-file "$RUNNER_TEMP/body.md"; then
+            exit 0
+          fi
+          {
+            echo "The workflow could not open the pull request. Open it here:"
+            echo
+            echo "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/compare/$BASE_BRANCH...$branch?expand=1"
+            echo
+            cat "$RUNNER_TEMP/body.md"
+          } >> "$GITHUB_STEP_SUMMARY"
