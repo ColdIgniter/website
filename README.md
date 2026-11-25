@@ -18,7 +18,7 @@ The file `.coldigniter-version` says which version of ColdIgniter the copy in `s
 ## Update the framework
 
 1. Open the workflow "update framework" under Actions and run it. Give it a tag such as `v4.1.0`, or `trunk`.
-2. The workflow replaces `system/` and opens a pull request.
+2. The workflow replaces `system/` and opens a pull request. If the organization does not let workflows open pull requests, the summary of the run gives a link that opens it.
 3. The pull request lists the files of the starter application (`app/`, `public/`, `env`) that changed in ColdIgniter. The site has its own copies of them, so merge those changes by hand.
 4. Merge the pull request.
 
