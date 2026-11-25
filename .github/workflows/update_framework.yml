@@ -41,27 +41,47 @@ jobs:
           old=$(sed -n 's/^commit=//p' .coldigniter-version)
           new=$(git -C _framework rev-parse HEAD)
           version=$(sed -n 's/.*this\.CI_VERSION = "\([^"]*\)".*/\1/p' _framework/system/ColdIgniter.cfc)
+          if [ -z "$version" ]; then
+            echo "::error::no CI_VERSION in system/ColdIgniter.cfc of $FRAMEWORK_REF"
+            exit 1
+          fi
           if [ "$old" = "$new" ]; then
             echo "The site already has ColdIgniter $version ($new)."
             exit 0
           fi
 
+          short=$(printf '%s' "$new" | cut -c1-7)
+          branch="framework/$short"
+          compare="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/compare/$BASE_BRANCH...$branch?expand=1"
+          if git ls-remote --exit-code --heads origin "$branch" > /dev/null; then
+            echo "::warning::the branch $branch is already there, nothing was changed"
+            echo "The branch \`$branch\` is already there: $compare" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
           # Files of the starter application that changed in ColdIgniter.
-          # The site has its own copies, so these are merged by hand.
-          starter=$(git -C _framework diff --name-only "$old" "$new" -- app public env || true)
+          # The site has its own copies, so these are merged by hand. The
+          # old commit can be missing from the history of the new one.
+          compared=yes
+          starter=
+          if [ -n "$old" ] && git -C _framework cat-file -e "$old^{commit}" 2> /dev/null; then
+            starter=$(git -C _framework diff --name-only "$old" "$new" -- app public env)
+          else
+            compared=no
+          fi
 
           rsync -a --delete _framework/system/ system/
           printf 'version=%s\ncommit=%s\n' "$version" "$new" > .coldigniter-version
           rm -rf _framework
 
-          short=$(printf '%s' "$new" | cut -c1-7)
-          branch="framework/$short"
           {
             echo "Updates \`system/\` to ColdIgniter $version (\`$FRAMEWORK_REF\`, commit $new)."
             echo
             echo "Before: commit $old."
             echo
-            if [ -n "$starter" ]; then
+            if [ "$compared" = no ]; then
+              echo "The workflow could not compare with the commit before. Check \`app/\`, \`public/\` and \`env\` against ColdIgniter by hand."
+            elif [ -n "$starter" ]; then
               echo "These files of the starter application changed in ColdIgniter. The site has its own copies, so look at each one and merge by hand:"
               echo
               printf '%s\n' "$starter" | sed 's/^/- `/; s/$/`/'
@@ -84,10 +104,11 @@ jobs:
             --body-file "$RUNNER_TEMP/body.md"; then
             exit 0
           fi
+          echo "::warning::could not open the pull request, see the summary of the run"
           {
             echo "The workflow could not open the pull request. Open it here:"
             echo
-            echo "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/compare/$BASE_BRANCH...$branch?expand=1"
+            echo "$compare"
             echo
             cat "$RUNNER_TEMP/body.md"
           } >> "$GITHUB_STEP_SUMMARY"
