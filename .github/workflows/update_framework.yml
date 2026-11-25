@@ -1,0 +1,81 @@
+name: update framework
+
+# Replaces system/ with the one of a chosen ColdIgniter version and opens
+# a pull request. The site changes only when that pull request is merged.
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "ColdIgniter version to take: a tag (v4.1.0), a branch (trunk) or a commit"
+        required: true
+        default: trunk
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: update-framework
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          repository: ColdIgniter/coldigniter
+          ref: ${{ inputs.ref }}
+          path: _framework
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Copy system/ and open a pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FRAMEWORK_REF: ${{ inputs.ref }}
+          BASE_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -eu
+          old=$(sed -n 's/^commit=//p' .coldigniter-version)
+          new=$(git -C _framework rev-parse HEAD)
+          version=$(sed -n 's/.*this\.CI_VERSION = "\([^"]*\)".*/\1/p' _framework/system/ColdIgniter.cfc)
+          if [ "$old" = "$new" ]; then
+            echo "The site already has ColdIgniter $version ($new)."
+            exit 0
+          fi
+
+          # Files of the starter application that changed in ColdIgniter.
+          # The site has its own copies, so these are merged by hand.
+          starter=$(git -C _framework diff --name-only "$old" "$new" -- app public env || true)
+
+          rsync -a --delete _framework/system/ system/
+          printf 'version=%s\ncommit=%s\n' "$version" "$new" > .coldigniter-version
+          rm -rf _framework
+
+          short=$(printf '%s' "$new" | cut -c1-7)
+          branch="framework/$short"
+          {
+            echo "Updates \`system/\` to ColdIgniter $version (\`$FRAMEWORK_REF\`, commit $new)."
+            echo
+            echo "Before: commit $old."
+            echo
+            if [ -n "$starter" ]; then
+              echo "These files of the starter application changed in ColdIgniter. The site has its own copies, so look at each one and merge by hand:"
+              echo
+              printf '%s\n' "$starter" | sed 's/^/- `/; s/$/`/'
+            else
+              echo "No file of the starter application (\`app/\`, \`public/\`, \`env\`) changed in ColdIgniter."
+            fi
+          } > "$RUNNER_TEMP/body.md"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -c "$branch"
+          git add -A
+          git commit -m "chore: update the framework to coldigniter $version"
+          git push -u origin "$branch"
+          gh pr create --base "$BASE_BRANCH" --head "$branch" \
+            --title "chore: update the framework to coldigniter $version" \
+            --body-file "$RUNNER_TEMP/body.md"

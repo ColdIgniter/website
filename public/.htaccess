@@ -1,0 +1,24 @@
+# Rewrite rules for Apache, and for IIS with URL Magic
+# (https://github.com/muncherelli/urlmagic4).
+
+RewriteEngine On
+
+# If ColdIgniter is installed in a subfolder, change the following line
+# to match the subfolder.
+# RewriteBase /
+
+# Redirect trailing slashes
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteCond %{REQUEST_URI} (.+)/$
+RewriteRule ^ %1 [L,R=301]
+
+# Rewrite "www.example.com -> example.com"
+RewriteCond %{HTTPS} !=on
+RewriteCond %{HTTP_HOST} ^www\.(.+)$ [NC]
+RewriteRule ^ http://%1%{REQUEST_URI} [R=301,L]
+
+# Send every request that is not for a real file or folder, such as an
+# image or a stylesheet, to the front controller, index.cfm
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^([\s\S]*)$ index.cfm/$1 [L,NC,QSA]
